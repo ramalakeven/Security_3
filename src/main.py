@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from schemas import UserCreate
+from src.schemas import UserCreate
 
 app = FastAPI()
 
