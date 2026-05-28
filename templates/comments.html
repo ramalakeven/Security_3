@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Comments</title>
+</head>
+<body>
+
+<h1>Comments</h1>
+
+<form method="post" action="/comments">
+    <textarea name="text"></textarea>
+    <button type="submit">Send</button>
+</form>
+
+<hr>
+
+{% for comment in comments %}
+    <div>{{ comment | safe }}</div>
+    <hr>
+{% endfor %}
+
+</body>
+</html>
