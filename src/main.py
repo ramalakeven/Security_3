@@ -1,3 +1,4 @@
+import os
 from fastapi.responses import Response
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse
@@ -12,7 +13,6 @@ load_dotenv()
 cipher = Fernet(os.getenv("FERNET_KEY"))
 import bleach
 import uuid
-import os
 from fastapi import UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 import filetype
