@@ -2,8 +2,14 @@ from fastapi.responses import Response
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+import base64
+from cryptography.fernet import Fernet
+from dotenv import load_dotenv
 from fastapi.responses import RedirectResponse
 app = FastAPI()
+load_dotenv()
+
+cipher = Fernet(os.getenv("FERNET_KEY"))
 import bleach
 import uuid
 import os
@@ -25,11 +31,7 @@ users = {
     "admin": {"username": "admin", "role": "admin"},
 }
 
-files_db = [
-    {"id": 1, "name": "alice_report.pdf", "owner": "alice", "size": 120},
-    {"id": 2, "name": "bob_report.pdf", "owner": "bob", "size": 200},
-    {"id": 3, "name": "admin_report.pdf", "owner": "admin", "size": 999},
-]
+files_db = []
 
 
 def get_current_user(x_user: str = Header(...)):
@@ -117,48 +119,53 @@ def all_files(user=Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Forbidden")
     return files_db
 @app.post("/files/upload")
-async def upload_file(file: UploadFile = File(...), request: Request = None):
-    contents = await file.read()
-    if len(contents) > 2 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="File too large")
-
-
-    kind = filetype.guess(contents)
-    if not kind or kind.mime not in ["image/jpeg", "image/png"]:
-        raise HTTPException(status_code=400, detail="Invalid file type")
-
+async def upload_file(file: UploadFile = File(...), encrypt: bool = False, request: Request = None):
+    data = await file.read()
 
     file_id = str(uuid.uuid4())
-    ext = ".jpg" if kind.mime == "image/jpeg" else ".png"
-    path = f"storage/{file_id}{ext}"
+    path = f"storage/{file_id}.bin"
+
+    is_encrypted = False
+
+    if encrypt:
+        data = cipher.encrypt(data)
+        is_encrypted = True
 
     with open(path, "wb") as f:
-        f.write(contents)
-
+        f.write(data)
 
     files_db.append({
         "id": file_id,
         "owner": request.headers.get("X-User"),
         "original_name": file.filename,
         "path": path,
-        "size": len(contents)
+        "size": len(data),
+        "is_encrypted": is_encrypted
     })
 
-    return {"msg": "uploaded", "id": file_id}
+    return {"id": file_id, "encrypted": is_encrypted}
+
 @app.get("/files/{file_id}/download")
 def download_file(file_id: str, request: Request):
     user = request.headers.get("X-User")
 
     file = next((f for f in files_db if f["id"] == file_id), None)
-
     if not file:
         raise HTTPException(status_code=404)
 
     if user != "admin" and file["owner"] != user:
         raise HTTPException(status_code=404)
 
-    return FileResponse(
-        file["path"],
-        filename=file["original_name"],
-        media_type="application/octet-stream"
+    with open(file["path"], "rb") as f:
+        data = f.read()
+
+    if file["is_encrypted"]:
+        data = cipher.decrypt(data)
+
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{file["original_name"]}"'
+        }
     )
